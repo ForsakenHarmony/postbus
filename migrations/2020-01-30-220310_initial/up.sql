@@ -1,15 +1,13 @@
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 CREATE TABLE message_list
 (
-    id   uuid PRIMARY KEY   NOT NULL DEFAULT uuid_generate_v4(),
+    id   uuid PRIMARY KEY   NOT NULL DEFAULT gen_random_uuid(),
 
     name varchar(64) UNIQUE NOT NULL
 );
 
 CREATE TABLE message
 (
-    id       uuid PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    id       uuid PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
 
     message  varchar(512)     NOT NULL,
     approved bool             NOT NULL,
@@ -27,7 +25,7 @@ CREATE TABLE chat
 
 CREATE TABLE event
 (
-    id               uuid PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
+    id               uuid PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
 
     hour             int              NOT NULL CHECK ( hour >= 0 AND hour <= 23 ),
     minute           int              NOT NULL CHECK ( hour >= 0 AND hour <= 59 ),

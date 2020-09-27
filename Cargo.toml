@@ -14,10 +14,10 @@ r2d2 = { version = "0.8.9" }
 #log = "0.4"
 #pretty_env_logger = "0.3"
 #xtra = { version = "0.2", features = ["with-tokio-0_2"] }
-futures = "0.3.1"
+futures = "0.3.5"
 tokio = { version = "0.2", features = ["full"] }
 telegram-bot-async = "0.8.2"
-uuid = { version = "0.7", features = ["v4"] }
+uuid = { version = "0.8", features = ["v4"] }
 #sqlx = { version = "0.2", default-features = false, features = [ "runtime-tokio", "macros", "postgres", "uuid" ] }
 #sqlx-macros = { git =  "https://github.com/launchbadge/sqlx", version = "0.2", default-features = false, features = [ "runtime-tokio" ] }
 serde = "1"

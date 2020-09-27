@@ -5,10 +5,10 @@ pub use scheduler::Scheduler;
 pub use telegram_sender::{EditMessage, SendMessage, TelegramSender};
 pub use update_router::{Update, UpdateRouter};
 
-mod scheduler;
-mod update_router;
 mod callback_router;
-mod telegram_sender;
 mod command_handler;
-mod database;
 pub mod commands;
+mod database;
+mod scheduler;
+mod telegram_sender;
+mod update_router;
