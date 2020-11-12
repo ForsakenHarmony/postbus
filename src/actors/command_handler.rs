@@ -1,40 +1,35 @@
-use std::collections::HashMap;
-
-use stage::{
-	actor_msg,
-	actors::{Actor, ActorCtx, ActorResult, Message},
-};
-use telegram_bot_async::MessageChat;
-
-use crate::{
-	actors::{commands::List, CallbackRouter, Scheduler, TelegramSender},
-	create_actor,
-};
+use crate::actors::{commands::List, CallbackRouter, Scheduler, TelegramSender};
 use futures::executor::block_on;
-
-pub struct TelegramCommand {
-	pub chat:    MessageChat,
-	pub command: String,
-}
-
-pub struct CreateCommand {
-	pub chat: MessageChat,
-}
+use std::collections::HashMap;
+use telegram_bot_async::MessageChat;
+use xtra::prelude::*;
 
 pub struct DestroyCommand {}
 
-actor_msg!(TelegramCommand, CreateCommand, DestroyCommand);
-
-pub struct CommandHandler {
-	telegram_sender: Actor,
-	callback_router: Actor,
-	scheduler:       Actor,
-
-	map: HashMap<MessageChat, HashMap<Command, Actor>>,
+impl Message for DestroyCommand {
+	type Result = ();
 }
 
+#[spaad::entangled]
+pub struct CommandHandler {
+	telegram_sender: TelegramSender,
+	callback_router: CallbackRouter,
+	scheduler:       Scheduler,
+
+	map: HashMap<MessageChat, HashMap<Command, Box<dyn MessageChannel<DestroyCommand>>>>,
+}
+
+#[spaad::entangled]
+impl Actor for CommandHandler {}
+
+#[spaad::entangled]
 impl CommandHandler {
-	pub fn new(telegram_sender: Actor, callback_router: Actor, scheduler: Actor) -> Self {
+	#[spaad::spawn(spawner = "tokio")]
+	pub fn new(
+		telegram_sender: TelegramSender,
+		callback_router: CallbackRouter,
+		scheduler: Scheduler,
+	) -> Self {
 		CommandHandler {
 			telegram_sender,
 			callback_router,
@@ -43,40 +38,29 @@ impl CommandHandler {
 			map: HashMap::new(),
 		}
 	}
-	pub async fn handle(mut self, ctx: ActorCtx, msg: Message) -> ActorResult<Self> {
-		if let Some(msg) = msg.try_cast::<TelegramCommand>() {
-			let chat_commands = self
-				.map
-				.entry(msg.chat.clone())
-				.or_insert_with(HashMap::new);
-			let command = Command::parse(&msg.command);
 
-			match command {
-				Command::List => {
-					let addr = create_actor(
-						&ctx.sys,
-						List::new(
-							self.telegram_sender.clone(),
-							self.callback_router.clone(),
-							self.scheduler.clone(),
-						),
-						List::handle,
-					);
-					addr.send(CreateCommand {
-						chat: msg.chat.clone(),
-					})
-					.await
-					.expect("should be able to send a message to an actor just created");
-					Some(addr)
-				}
-				Command::Reminder => unimplemented!(),
-				Command::_NoCommand_ => None,
+	#[spaad::handler(spawner = "tokio")]
+	pub async fn telegram_command(&mut self, chat: MessageChat, command: String) {
+		let chat_commands = self.map.entry(chat.clone()).or_insert_with(HashMap::new);
+		let command = Command::parse(&command);
+
+		match command {
+			Command::List => {
+				let cmd = List::new(
+					self.telegram_sender.clone(),
+					self.callback_router.clone(),
+					self.scheduler.clone(),
+				);
+
+				cmd.create_command(chat.clone()).await;
+
+				Some(Box::new(cmd.into_address()))
 			}
-			.and_then(|ch| chat_commands.insert(command, ch))
-			.map(|ch| block_on(ch.send(DestroyCommand {})).is_ok());
+			Command::Reminder => unimplemented!(),
+			Command::_NoCommand_ => None,
 		}
-
-		return Ok(self);
+		.and_then(|ch| chat_commands.insert(command, ch))
+		.map(|ch| block_on(ch.send(DestroyCommand {})).is_ok());
 	}
 }
 

@@ -1,61 +1,37 @@
-use std::time::Duration;
-
-use chrono::{NaiveTime, Timelike, Utc};
-use stage::{
-	actor_msg,
-	actors::{Actor, ActorCtx, ActorResult, Message, Response},
-	sys_msgs::ActorStart,
-};
-use tracing::warn;
-
 use crate::{
-	actors::{database::GetScheduledEvents, GetAllScheduledEvents},
+	actors::{CallbackRouter, Database, TelegramSender},
 	database::models::Event,
 };
-
-/// Initial fetch from Database
-pub struct FetchScheduledEvents {}
-
-pub struct ScheduleEvent {
-	event: Event,
-}
-
-pub struct CreateEvent {}
-
-pub struct ScheduleTmpEvent {}
-
-pub struct RemoveTmpEvents {}
-
-pub struct RemoveEvent {}
-
-/// -> Vec<Event>
-pub struct GetEvents {
-	pub chat: i64,
-}
+use chrono::{NaiveTime, Timelike, Utc};
+use std::time::Duration;
+use xtra::prelude::*;
 
 pub struct HandleEvent {
 	pub event: Event,
 }
 
-actor_msg!(
-	FetchScheduledEvents,
-	ScheduleEvent,
-	CreateEvent,
-	ScheduleTmpEvent,
-	RemoveTmpEvents,
-	RemoveEvent,
-	GetEvents,
-	HandleEvent
-);
-
-pub struct Scheduler {
-	database:        Actor,
-	telegram_sender: Actor,
-	callback_router: Actor,
+impl xtra::Message for HandleEvent {
+	type Result = ();
 }
 
+#[spaad::entangled]
+pub struct Scheduler {
+	database:        Database,
+	telegram_sender: TelegramSender,
+	callback_router: CallbackRouter,
+}
+
+#[spaad::entangled]
+impl Actor for Scheduler {}
+
+#[spaad::entangled]
 impl Scheduler {
-	pub fn new(database: Actor, telegram_sender: Actor, callback_router: Actor) -> Self {
+	#[spaad::spawn(spawner = "tokio")]
+	pub fn new(
+		database: Database,
+		telegram_sender: TelegramSender,
+		callback_router: CallbackRouter,
+	) -> Self {
 		Scheduler {
 			database,
 			telegram_sender,
@@ -63,51 +39,53 @@ impl Scheduler {
 		}
 	}
 
-	pub async fn handle(mut self, ctx: ActorCtx, msg: Message) -> ActorResult<Self> {
-		if let Some(msg) = msg.try_cast::<ActorStart>() {
-			ctx.this.send(FetchScheduledEvents {}).await.unwrap();
-		} else if let Some(msg) = msg.try_cast::<FetchScheduledEvents>() {
-			let events = self
-				.database
-				.ask(GetAllScheduledEvents {}, Response::Wait)
-				.await
-				.expect("Should be able to get events");
+	#[spaad::handler]
+	pub async fn fetch_scheduled_events(&mut self) {
+		let events: Vec<Event> = self.database.get_all_scheduled_events().await;
 
-			for event in events {
-				//                ctx.notify_immediately(ScheduleEvent { event });
-			}
-		} else if let Some(msg) = msg.try_cast::<ScheduleEvent>() {
-			let time = NaiveTime::from_hms(msg.event.hour as u32, msg.event.minute as u32, 0);
-			let dur = duration_until(time);
-			ctx.this
-				.send_after(
-					HandleEvent {
-						event: msg.event.clone(),
-					},
-					dur,
-				)
-				.expect("should be able to queue a message for itself");
-		} else if let Some(msg) = msg.try_cast::<CreateEvent>() {
-			unimplemented!();
-		} else if let Some(msg) = msg.try_cast::<ScheduleTmpEvent>() {
-			unimplemented!();
-		} else if let Some(msg) = msg.try_cast::<RemoveTmpEvents>() {
-			unimplemented!();
-		} else if let Some(msg) = msg.try_cast::<RemoveEvent>() {
-			unimplemented!();
-		} else if let Some(msg) = msg.try_cast::<GetEvents>() {
-			self.database
-				.ask(GetScheduledEvents { chat: msg.chat }, Response::Wait)
-				.await
-				.expect("should be able to get events for chat");
-			unimplemented!();
-		} else if let Some(msg) = msg.try_cast::<HandleEvent>() {
-			unimplemented!();
-		} else {
-			warn!("received unknown event");
+		for event in events {
+			//                ctx.notify_immediately(ScheduleEvent { event });
 		}
+	}
 
-		return Ok(self);
+	#[spaad::handler]
+	pub async fn schedule_event(&mut self, event: Event, ctx: &mut Context<Scheduler>) {
+		let time = NaiveTime::from_hms(event.hour as u32, event.minute as u32, 0);
+		let dur = duration_until(time);
+
+		let _ = ctx.notify_after(dur, HandleEvent { event });
+	}
+
+	#[spaad::handler]
+	pub async fn create_event(&mut self) {
+		unimplemented!();
+	}
+
+	#[spaad::handler]
+	pub async fn schedule_tmp_event(&mut self) {
+		unimplemented!();
+	}
+
+	#[spaad::handler]
+	pub async fn remove_tmp_event(&mut self) {
+		unimplemented!();
+	}
+
+	#[spaad::handler]
+	pub async fn remove_event(&mut self) {
+		unimplemented!();
+	}
+
+	#[spaad::handler]
+	pub async fn get_events(&mut self, chat_id: i64) -> Vec<Event> {
+		let events = self.database.get_scheduled_events(chat_id).await;
+
+		events
+	}
+
+	#[spaad::handler(msg = "HandleEvent")]
+	pub async fn handle_event(&mut self, msg: HandleEvent) {
+		unimplemented!();
 	}
 }
 
